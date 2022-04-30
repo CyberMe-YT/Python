@@ -47,9 +47,10 @@ try:
         def add_record():
             """Add application/password record"""
             app = input("Enter application/website: ")
+            username = input("Enter username: ")
             password = input("Enter password: ")
-            data = (app, secureme(password))
-            insert_query = """INSERT INTO sites (application, password) VALUES (%s, %s) """
+            data = (app, username, secureme(password))
+            insert_query = """INSERT INTO sites (application,username, password) VALUES (%s, %s, %s) """
 
             cursor = connection.cursor()
             cursor.execute(insert_query, data)
@@ -84,13 +85,19 @@ try:
         def verify_pass():
             """Find matches for user input"""
             ver_pass = input("Enter password to find matching application: ")
+            if ver_pass == '*':
+                sel_query = """SELECT * FROM sites;"""
+                cursor = connection.cursor()
+                cursor.execute(sel_query)
+                for r in cursor:
+                    print(r)
             h_pass = secureme(ver_pass)
             h_pass = (h_pass,)
-            sel_query = """ SELECT application FROM sites WHERE password = %s """
+            sel_query = """ SELECT application, username FROM sites WHERE password = %s """
             cursor = connection.cursor()
             cursor.execute(sel_query, h_pass)
-            for r in cursor:
-                print(r[0])
+            for (application, username) in cursor:
+                print("Application:{}, Username:{}".format(application, username))
 
 
         loopon = True
