@@ -1,0 +1,118 @@
+#!/bin/env python3
+
+
+import mysql.connector
+from mysql.connector import Error
+import hashlib
+import sys
+from os import system, name
+
+dbpass = input("Enter password: ")
+
+
+def clearscreen():
+    """Clear screen after each time entering the main menu"""
+    # Windows
+    if name == 'nt':
+        _ = system('cls')
+    # For mac/linux
+    else:
+        _ = system('clear')
+
+
+def pause():
+    """Pause screen after each function for user to see result"""
+    pausescreen = input("Press any key to continue")
+
+
+def secureme(p):
+    """Hash user input and return"""
+    f = p.encode('utf-8')
+    h = hashlib.md5(f)
+    final = h.hexdigest()
+    return final
+
+
+def mainmenu():
+    """Main menu for user"""
+    menu_choice = input("1. Add Record\n2. Delete Record\n3. Retrieve Record\n4. Quit\n:")
+    return menu_choice
+
+
+try:
+    connection = mysql.connector.connect(host='192.168.1.50', database='storage', user='root', password=dbpass)
+
+    if connection.is_connected():
+
+        def add_record():
+            """Add application/password record"""
+            app = input("Enter application/website: ")
+            password = input("Enter password: ")
+            data = (app, secureme(password))
+            insert_query = """INSERT INTO sites (application, password) VALUES (%s, %s) """
+
+            cursor = connection.cursor()
+            cursor.execute(insert_query, data)
+            connection.commit()
+
+            print("Record Added")
+            cursor.close()
+
+
+        def delete_record():
+            """ Delete record if exists in MYSQL DB"""
+            del_choice = input("Enter which records to delete (1 2 3 4 5):")
+            del_list = []
+            del_list = del_list + del_choice.split(' ')  # split input with delimiter ' ' and add to list
+
+            sel_query = """ SELECT ID FROM sites WHERE ID = %s """
+            cursor = connection.cursor()
+            for r in del_list:
+                tupleme = (r,)
+                cursor.execute(sel_query, tupleme)
+                counter = 0
+                for (ID) in cursor:
+                    ID = ID[counter]  # Remove from tuple format (1,) to 1
+                    del_query = """DELETE FROM sites WHERE ID = %s"""
+                    del_data = (ID,)
+                    cursor.execute(del_query, del_data)
+                    connection.commit()
+                    counter += 1
+            cursor.close()
+
+
+        def verify_pass():
+            """Find matches for user input"""
+            ver_pass = input("Enter password to find matching application: ")
+            h_pass = secureme(ver_pass)
+            h_pass = (h_pass,)
+            sel_query = """ SELECT application FROM sites WHERE password = %s """
+            cursor = connection.cursor()
+            cursor.execute(sel_query, h_pass)
+            for r in cursor:
+                print(r[0])
+
+
+        loopon = True
+        while loopon:
+            clearscreen()
+            # Get menu choice from user
+            choice = mainmenu()
+            if choice == '1':  # Add Record
+                add_record()
+                pause()
+            elif choice == '2':  # Delete Record
+                delete_record()
+                pause()
+            elif choice == '3':  # Retrieve record
+                verify_pass()
+                pause()
+            elif choice == '4':  # Quit
+                sys.exit("Goodbye")
+            else:
+                print("Incorrect menu choice.")
+
+
+
+except Error as e:
+    print(e)
