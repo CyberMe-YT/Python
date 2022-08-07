@@ -4,11 +4,14 @@
 import mysql.connector
 from mysql.connector import Error
 import hashlib
+from Crypto.Cipher import PKCS1_OAEP
+from Crypto.PublicKey import RSA
+from os.path import exists
 import sys
 from os import system, name
 
+# Password to access MySQL server
 dbpass = input("Enter password: ")
-
 
 def clearscreen():
     """Clear screen after each time entering the main menu"""
@@ -26,11 +29,33 @@ def pause():
 
 
 def secureme(p):
-    """Hash user input and return"""
-    f = p.encode('utf-8')
-    h = hashlib.md5(f)
-    final = h.hexdigest()
-    return final
+    """encrypt using public key and return"""
+    # Convert password string to bytes
+    pbytes = p.encode('UTF-8')
+    # Check if public key exists in current directory
+    fileexists = exists('./pvault_public.pem')
+    if (fileexists == False):
+        """Public does not exist, generate keypair"""
+        new_key = RSA.generate(2048)
+        privateKey = new_key.exportKey("PEM")
+        publicKey = new_key.publickey().exportKey("PEM")
+        # Write private key
+        fd = open("pvault_private.pem", "wb")
+        fd.write(privateKey)
+        fd.close()
+        # Write public key
+        fd = open("pvault_public.pem", "wb")
+        fd.write(publicKey)
+        fd.close()
+        print("WARNING: PRIVATE KEY GENERATED IN CURRENT DIRECTORY, MAKE TO MOVE AND SECURE PRIVATE KEY!!")
+
+    # Perform Encrpytion of password passed (pbytes)
+    key = RSA.import_key(open('pvault_public.pem').read())
+    cipher = PKCS1_OAEP.new(key)
+    encrypted_pass = cipher.encrypt(pbytes)
+    #convert back to string
+    encrypted_pass = (str(encrypted_pass))
+    return encrypted_pass
 
 
 def mainmenu():
@@ -40,7 +65,7 @@ def mainmenu():
 
 
 try:
-    connection = mysql.connector.connect(host='192.168.1.50', database='storage', user='root', password=dbpass)
+    connection = mysql.connector.connect(host='172.17.0.1', port='3316', database='pvault', user='root', password=dbpass)
 
     if connection.is_connected():
 
@@ -50,56 +75,67 @@ try:
             username = input("Enter username: ")
             password = input("Enter password: ")
             data = (app, username, secureme(password))
-            insert_query = """INSERT INTO sites (application,username, password) VALUES (%s, %s, %s) """
+            insert_query = """INSERT INTO userinfo (Account,Username,Password) VALUES (%s, %s, %s) """
 
             cursor = connection.cursor()
             cursor.execute(insert_query, data)
             connection.commit()
-
             print("Record Added")
             cursor.close()
 
 
         def delete_record():
             """ Delete record if exists in MYSQL DB"""
-            del_choice = input("Enter which records to delete (1 2 3 4 5):")
+            del_choice = input("Enter which records to delete (facebook instagram):")
             del_list = []
             del_list = del_list + del_choice.split(' ')  # split input with delimiter ' ' and add to list
 
-            sel_query = """ SELECT ID FROM sites WHERE ID = %s """
+            sel_query = """ SELECT Account FROM userinfo WHERE Account = %s """
             cursor = connection.cursor()
             for r in del_list:
                 tupleme = (r,)
                 cursor.execute(sel_query, tupleme)
                 counter = 0
-                for (ID) in cursor:
-                    ID = ID[counter]  # Remove from tuple format (1,) to 1
-                    del_query = """DELETE FROM sites WHERE ID = %s"""
-                    del_data = (ID,)
+                for (Account) in cursor:
+                    Account = Account[counter]  # Remove from tuple format (1,) to 1
+                    del_query = """DELETE FROM userinfo WHERE Account = %s"""
+                    del_data = (Account,)
                     cursor.execute(del_query, del_data)
                     connection.commit()
+                    print(Account, 'Deleted')
                     counter += 1
             cursor.close()
 
 
         def verify_pass():
             """Find matches for user input"""
-            ver_pass = input("Enter password to find matching application: ")
-            if ver_pass == '*':
-                sel_query = """SELECT * FROM sites;"""
+            app = input("Enter app to find password: ")
+            # Print all Accounts and associated Username
+            if app == '*':
+                sel_query = """SELECT Account, Username FROM userinfo;"""
                 cursor = connection.cursor()
                 cursor.execute(sel_query)
                 for r in cursor:
-                    print(r)
-            h_pass = secureme(ver_pass)
-            h_pass = (h_pass,)
-            sel_query = """ SELECT application, username FROM sites WHERE password = %s """
-            cursor = connection.cursor()
-            cursor.execute(sel_query, h_pass)
-            for (application, username) in cursor:
-                print("Application:{}, Username:{}".format(application, username))
+                    print('Account:', r[0], 'Username:', r[1])
+            else:
+                h_pass = (app,)
+                sel_query = """ SELECT Password FROM userinfo WHERE Account = %s """
+                cursor = connection.cursor()
+                cursor.execute(sel_query, h_pass)
+                str = ''
+                for (Password) in cursor:
+                    Password = Password
 
-
+                # Convert Password Tuple to String
+                str = ''.join(Password)
+                # Convert string value of Password back to bytes
+                str = eval(str)
+                # Read private key
+                key = RSA.import_key(open('pvault_private.pem').read())
+                cipher = PKCS1_OAEP.new(key)
+                # Decrypt password using private key 
+                plaintext = cipher.decrypt(str)
+                print('Password:',plaintext.decode("utf-8"))
         loopon = True
         while loopon:
             clearscreen()
@@ -118,7 +154,6 @@ try:
                 sys.exit("Goodbye")
             else:
                 print("Incorrect menu choice.")
-
 
 
 except Error as e:
